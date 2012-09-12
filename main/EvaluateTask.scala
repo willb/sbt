@@ -150,7 +150,7 @@ object EvaluateTask
 		val (service, shutdown) = completionService[Task[_], Completed](tags, (s: String) => log.warn(s))
 
 		def run() = {
-			val x = new Execute[Task](config.checkCycles, triggers)(taskToNode)
+			val x = new Execute[Task, Unit](config.checkCycles, triggers, progress)(taskToNode)
 			val (newState, result) =
 				try applyResults(x.runKeep(root)(service), state, root)
 				catch { case inc: Incomplete => (state, Inc(inc)) }
@@ -168,6 +168,26 @@ object EvaluateTask
 			Signals.withHandler(cancel) { run }
 		else
 			run()
+	}
+	def progress: ExecuteProgress[Unit, Task] = new ExecuteProgress[Unit, Task]
+	{
+		private[this] val timings = new java.util.concurrent.ConcurrentHashMap[Task[_], Long]
+		private[this] var start = 0L
+
+		def initial = { start = System.nanoTime }
+		def registered(state: Unit, task: Task[_]) = ()
+		def ready(state: Unit, task: Task[_]) = ()
+		def started(task: Task[_]) = timings.put(task, System.nanoTime)
+		def completed[T](state: Unit, task: Task[T], result: Result[T]) = 
+			timings.put(task, System.nanoTime - timings.get(task))
+		def allCompleted(state: Unit, results: RMap[Task,Result]) =
+		{
+			val total = System.nanoTime - start
+			println("Total time: " + (total*1e-6) + " ms")
+				import collection.JavaConversions._
+			for( (t, time) <- timings.toSeq)
+				println("  " + name(t) + ": " + (time*1e-6) + " ms")
+		}
 	}
 
 	def applyResults[T](results: RMap[Task, Result], state: State, root: Task[T]): (State, Result[T]) =
@@ -187,7 +207,7 @@ object EvaluateTask
 		case in @ Incomplete(Some(node: Task[_]), _, _, _, _) => in.copy(node = transformNode(node))
 		case i => i
 	}
-	type AnyCyclic = Execute[Task]#CyclicException[_]
+	type AnyCyclic = Execute[Task,_]#CyclicException[_]
 	def convertCyclicInc: Incomplete => Incomplete = {
 		case in @ Incomplete(_, _, _, _, Some(c: AnyCyclic)) => in.copy(directCause = Some(new RuntimeException(convertCyclic(c))) )
 		case i => i

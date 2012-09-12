@@ -33,7 +33,7 @@ trait NodeView[A[_]]
 }
 final class Triggers[A[_]](val runBefore: collection.Map[A[_], Seq[A[_]]], val injectFor: collection.Map[A[_], Seq[A[_]]], val onComplete: RMap[A,Result] => RMap[A,Result])
 
-final class Execute[A[_] <: AnyRef](checkCycles: Boolean, triggers: Triggers[A])(implicit view: NodeView[A])
+final class Execute[A[_] <: AnyRef, S](checkCycles: Boolean, triggers: Triggers[A], progress: ExecuteProgress[S, A])(implicit view: NodeView[A])
 {
 	type Strategy = CompletionService[A[_], Completed]
 
@@ -50,6 +50,7 @@ final class Execute[A[_] <: AnyRef](checkCycles: Boolean, triggers: Triggers[A])
 			case None => results(a)
 		}
 	}
+	private[this] var progressState: S = progress.initial
 
 	private[this] type State = State.Value
 	private[this] object State extends Enumeration {
@@ -67,7 +68,9 @@ final class Execute[A[_] <: AnyRef](checkCycles: Boolean, triggers: Triggers[A])
 		addNew(root)
 		processAll()
 		assert( results contains root, "No result for root node." )
-		triggers.onComplete(results)
+		val finalResults = triggers.onComplete(results)
+		progressState = progress.allCompleted(progressState, finalResults)
+		finalResults
 	}
 
 	def processAll()(implicit strategy: Strategy)
@@ -130,6 +133,7 @@ final class Execute[A[_] <: AnyRef](checkCycles: Boolean, triggers: Triggers[A])
 
 		results(node) = result
 		state(node) = Done
+		progressState = progress.completed(progressState, node, result)
 		remove( reverse, node ) foreach { dep => notifyDone(node, dep) }
 		callers.remove( node ).toList.flatten.foreach { c => retire(c, callerResult(c, result)) }
 		triggeredBy( node ) foreach { t => addChecked(t) }
@@ -168,14 +172,15 @@ final class Execute[A[_] <: AnyRef](checkCycles: Boolean, triggers: Triggers[A])
 		post { addedInv( node ) }
 	}
 	/** Adds a node that has not yet been registered with the system.
-	* If all of the node's dependencies have finished, the node's computation scheduled to run.
+	* If all of the node's dependencies have finished, the node's computation is scheduled to run.
 	* The node's dependencies will be added (transitively) if they are not already registered.
-	* */
+	*/
 	def addNew[T](node: A[T])(implicit strategy: Strategy)
 	{
 		pre { newPre(node) }
 
 		val v = register( node )
+		progressState = progress.registered(progressState, node)
 		val deps = dependencies(v) ++ runBefore(node)
 		val active = IDSet[A[_]](deps filter notDone )
 
@@ -208,6 +213,7 @@ final class Execute[A[_] <: AnyRef](checkCycles: Boolean, triggers: Triggers[A])
 		}
 
 		state(node) = Running
+		progressState = progress.ready(progressState, node)
 		submit(node)
 
 		post {
@@ -235,6 +241,7 @@ final class Execute[A[_] <: AnyRef](checkCycles: Boolean, triggers: Triggers[A])
 	* This returns a Completed instance, which contains the post-processing to perform after the result is retrieved from the Strategy.*/
 	def work[T](node: A[T], f: => Either[A[T], T])(implicit strategy: Strategy): Completed =
 	{
+		progress.started(node)
 		val result = wideConvert(f).left.map {
 			case i: Incomplete => if(i.node.isEmpty) i.copy(node = Some(node)) else i
 			case e => Incomplete(Some(node), Incomplete.Error, directCause = Some(e))
