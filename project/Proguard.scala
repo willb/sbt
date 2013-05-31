@@ -18,7 +18,7 @@ object LaunchProguard
 	lazy val settings: Seq[Setting[_]] =
 		inScope(GlobalScope)(inConfig(Proguard)(globalSettings)) ++
 		inConfig(Proguard)( baseSettings ) :+
-		(libraryDependencies += "net.sf.proguard" % "proguard" % "4.4" % Proguard.name)
+		(libraryDependencies += "net.sf.proguard" % "proguard" % "4.8" % Proguard.name)
 
 	def globalSettings = Seq(
 		optimizePasses := 2,
