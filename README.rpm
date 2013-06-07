@@ -1,0 +1,9 @@
+First, get the bootstrap version of sbt:
+
+    curl http://repo.typesafe.com/typesafe/ivy-releases/org.scala-sbt/sbt-launch/%{bootstrap_sbt_version}/sbt-launch.jar > sbt-launch.jar
+
+Then attempt to build sbt itself:
+
+    java -Xms512M -Xmx1536M -Xss1M -XX:+CMSClassUnloadingEnabled -jar -Dsbt.boot.properties=sbt.boot.properties sbt-launch.jar
+
+Currently the issue is that it can't resolve jsoup or scala.  Dispatch needs to be packaged before it is a problem that sbt and ivy can't find it.
