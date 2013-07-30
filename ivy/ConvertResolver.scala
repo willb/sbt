@@ -76,12 +76,18 @@ private object ConvertResolver
 			case repo: RawRepository => repo.resolver
 		}
 	}
+    
+    private object DescriptorOptional
+    {
+        lazy val optional = { System.getProperty("sbt.ivy.descriptor") == "optional" }
+    }
+    
 	private sealed trait DescriptorRequired extends BasicResolver
 	{
 		override def getDependency(dd: DependencyDescriptor, data: ResolveData) =
 		{
 			val prev = descriptorString(isAllownomd)
-			setDescriptor(descriptorString(hasExplicitURL(dd)))
+			setDescriptor(descriptorString(hasExplicitURL(dd) || DescriptorOptional.optional))
 			try super.getDependency(dd, data) finally setDescriptor(prev)
 		}
 		def descriptorString(optional: Boolean) =
