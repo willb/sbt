@@ -1,12 +1,6 @@
 	import sbt._
 	import Keys._
 	import Status.{isSnapshot, publishStatus}
-	import com.typesafe.sbt.{SbtGhPages,SbtGit,SbtSite,site=>sbtsite}
-	import SbtSite.{site, SiteKeys}
-	import SbtGhPages.{ghpages, GhPagesKeys => ghkeys}
-	import SbtGit.{git, GitKeys}
-	import sbtsite.SphinxSupport
-	import SiteKeys.{makeSite,siteMappings}
 	import Sxr.sxr
 
 object Docs
@@ -19,41 +13,8 @@ object Docs
 	val HomeHtml = "home.html"
 	val VersionPattern = """(\d+)\.(\d+)\.(\d+)(-.+)?""".r.pattern
 
-	def settings: Seq[Setting[_]] =
-		site.settings ++
-		site.sphinxSupport(DocsPath) ++
-		site.includeScaladoc("api") ++
-		siteIncludeSxr("sxr") ++
-		ghPagesSettings
+	def settings: Seq[Setting[_]] = Seq[Setting[_]]()
 
-	def ghPagesSettings = ghpages.settings ++ Seq(
-		git.remoteRepo := "git@github.com:sbt/sbt.github.com.git",
-		ghkeys.synchLocal <<= synchLocalImpl,
-		cnameFile <<= (sourceDirectory in SphinxSupport.Sphinx) / "CNAME",
-		GitKeys.gitBranch in ghkeys.updatedRepository := Some("master")
-	)
-
-	def siteIncludeSxr(prefix: String) = Seq(
-		mappings in sxr <<= sxr.map(dir => Path.allSubpaths(dir).toSeq),
-		site.addMappingsToSiteDir(mappings in sxr, prefix)
-	)
-
-	def synchLocalImpl = (ghkeys.privateMappings, ghkeys.updatedRepository, version, isSnapshot, streams, cnameFile) map { (mappings, repo, v, snap, s, cname) =>
-		val versioned = repo / v
-		if(snap)
-			IO.delete(versioned)
-		else if(versioned.exists)
-			error("Site for " + v + " already exists: " + versioned.getAbsolutePath)
-		IO.copy(mappings map { case (file, target) => (file, versioned / target) })
-		IO.copyFile(cname, repo / cname.getName)
-		IO.touch(repo / ".nojekyll")
-		IO.write(repo / "versions.js", versionsJs(sortVersions(collectVersions(repo))))
-		if(!snap)
-			RootIndex(versioned / DocsPath / "home.html", repo / IndexHtml)
-		linkSite(repo, v, if(snap) SnapshotPath else ReleasePath, s.log)
-		s.log.info("Copied site to " + versioned)
-		repo
-	}
 	def versionsJs(vs: Seq[String]): String = "var availableDocumentationVersions = " + vs.mkString("['", "', '", "']")
 	// names of all directories that are explicit versions
 	def collectVersions(base: File): Seq[String] = (base * versionFilter).get.map(_.getName)
